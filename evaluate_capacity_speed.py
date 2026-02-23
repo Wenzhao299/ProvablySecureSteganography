@@ -1,4 +1,7 @@
+"""Benchmark average embedding capacity and embedding speed across methods."""
+
 import argparse
+
 import csv
 import json
 import os
@@ -16,6 +19,7 @@ from utils import encode_context, get_model
 
 
 def infer_dataset_name(input_csv: str) -> str:
+    """Infer dataset name."""
     file_stem = os.path.splitext(os.path.basename(input_csv))[0]
     parts = file_stem.split("_")
     if len(parts) > 1:
@@ -24,11 +28,18 @@ def infer_dataset_name(input_csv: str) -> str:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Calculate embedding capacity and speed for steganography methods")
-    parser.add_argument("--model_name", type=str, default="qwen2.5", choices=SUPPORTED_MODEL_NAMES)
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Calculate embedding capacity and speed for steganography methods"
+    )
+    parser.add_argument(
+        "--model_name", type=str, default="qwen2.5", choices=SUPPORTED_MODEL_NAMES
+    )
     parser.add_argument("--model_precision", type=str, default="float16")
     parser.add_argument("--input_csv", type=str, default="context_movie.csv")
-    parser.add_argument("--dataset", type=str, default="", help="Default inferred from --input_csv")
+    parser.add_argument(
+        "--dataset", type=str, default="", help="Default inferred from --input_csv"
+    )
     parser.add_argument("--max_contexts", type=int, default=100)
     parser.add_argument("--max_tokens", type=int, default=100)
     parser.add_argument("--ac_precision", type=int, default=None)
@@ -43,6 +54,7 @@ def parse_args():
 
 
 def load_contexts(path: str, max_contexts: int):
+    """Load contexts."""
     contexts = []
     with open(path, "r", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
@@ -56,6 +68,7 @@ def load_contexts(path: str, max_contexts: int):
 
 
 def main():
+    """Run the module entrypoint."""
     args = parse_args()
 
     model_path = resolve_model_path(args.model_name)
@@ -106,7 +119,9 @@ def main():
                 if not context_tokens:
                     continue
 
-                message_bits = "".join(random.choice("01") for _ in range(args.max_tokens * 16))
+                message_bits = "".join(
+                    random.choice("01") for _ in range(args.max_tokens * 16)
+                )
 
                 if method_name == "ac":
                     output = encode_function(
@@ -151,7 +166,11 @@ def main():
 
                 generated_ids, encoded_message, _, _, elapsed_time = output
 
-                bits_embedded = len("".join(encoded_message)) if isinstance(encoded_message, list) else len(encoded_message)
+                bits_embedded = (
+                    len("".join(encoded_message))
+                    if isinstance(encoded_message, list)
+                    else len(encoded_message)
+                )
                 num_generated_tokens = len(generated_ids)
 
                 if num_generated_tokens > 0 and elapsed_time > 0:

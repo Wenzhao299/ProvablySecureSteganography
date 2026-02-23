@@ -1,4 +1,7 @@
+"""Run batch steganography and extraction across multiple GPUs with resume support."""
+
 import argparse
+
 import csv
 import json
 import os
@@ -40,7 +43,10 @@ from utils import (
 )
 
 
-def split_contexts_by_rank(contexts: List[Dict[str, str]], rank: int, world_size: int) -> List[Dict[str, str]]:
+def split_contexts_by_rank(
+    contexts: List[Dict[str, str]], rank: int, world_size: int
+) -> List[Dict[str, str]]:
+    """Split contexts by rank."""
     total = len(contexts)
     start = (total * rank) // world_size
     end = (total * (rank + 1)) // world_size
@@ -48,6 +54,7 @@ def split_contexts_by_rank(contexts: List[Dict[str, str]], rank: int, world_size
 
 
 def worker(rank: int, world_size: int, args, contexts: List[Dict[str, str]]):
+    """Process one GPU worker shard for parallel steganography."""
     device = f"cuda:{rank}"
     torch.cuda.set_device(rank)
 
@@ -61,7 +68,9 @@ def worker(rank: int, world_size: int, args, contexts: List[Dict[str, str]]):
     model.eval()
 
     part_jsonl_path = os.path.join(args.tmp_dir, f"{args.method}.part_{rank}.jsonl")
-    part_stats_path = os.path.join(args.tmp_dir, f"{args.method}.stats.{args.run_tag}.{rank}.json")
+    part_stats_path = os.path.join(
+        args.tmp_dir, f"{args.method}.stats.{args.run_tag}.{rank}.json"
+    )
     worker_contexts = split_contexts_by_rank(contexts, rank, world_size)
 
     matched = 0
@@ -69,7 +78,9 @@ def worker(rank: int, world_size: int, args, contexts: List[Dict[str, str]]):
     failed = 0
 
     with open(part_jsonl_path, "a", encoding="utf-8") as f_out:
-        for item in tqdm(worker_contexts, desc=f"GPU {rank}", position=rank, unit="sample"):
+        for item in tqdm(
+            worker_contexts, desc=f"GPU {rank}", position=rank, unit="sample"
+        ):
             context_id = item["id"]
             context_text = item["text"]
 
@@ -88,7 +99,11 @@ def worker(rank: int, world_size: int, args, contexts: List[Dict[str, str]]):
                     device,
                 )
 
-                stego_text = enc.decode(generated_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)
+                stego_text = enc.decode(
+                    generated_ids,
+                    skip_special_tokens=False,
+                    clean_up_tokenization_spaces=False,
+                )
                 extracted_bits = decode_with_method(
                     args.method,
                     model,
@@ -98,7 +113,9 @@ def worker(rank: int, world_size: int, args, contexts: List[Dict[str, str]]):
                     device,
                 )
 
-                is_match = extracted_bits.startswith(embedded_bits) if embedded_bits else True
+                is_match = (
+                    extracted_bits.startswith(embedded_bits) if embedded_bits else True
+                )
                 if is_match:
                     matched += 1
 
@@ -129,6 +146,7 @@ def worker(rank: int, world_size: int, args, contexts: List[Dict[str, str]]):
 
 
 def load_contexts(input_csv: str, max_contexts: int) -> List[Dict[str, str]]:
+    """Load contexts."""
     rows: List[Dict[str, str]] = []
     with open(input_csv, "r", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
@@ -144,6 +162,7 @@ def load_contexts(input_csv: str, max_contexts: int) -> List[Dict[str, str]]:
 
 
 def _parse_jsonl_id_text(line: str) -> Optional[Tuple[str, str]]:
+    """Internal helper to parse jsonl id text."""
     try:
         obj = json.loads(line)
     except json.JSONDecodeError:
@@ -162,6 +181,7 @@ def _parse_jsonl_id_text(line: str) -> Optional[Tuple[str, str]]:
 
 
 def list_part_jsonl_paths(args) -> List[str]:
+    """List part jsonl paths."""
     prefix = f"{args.method}.part_"
     part_paths: List[str] = []
     if not os.path.isdir(args.tmp_dir):
@@ -174,9 +194,11 @@ def list_part_jsonl_paths(args) -> List[str]:
 
 
 def collect_processed_ids(args, output_jsonl_path: str) -> Set[str]:
+    """Collect processed ids."""
     processed_ids: Set[str] = set()
 
     def _collect_ids_from_jsonl(path: str):
+        """Internal helper to collect ids from jsonl."""
         if not os.path.exists(path):
             return
         with open(path, "r", encoding="utf-8") as f:
@@ -194,11 +216,15 @@ def collect_processed_ids(args, output_jsonl_path: str) -> Set[str]:
     return processed_ids
 
 
-def merge_part_files(args, run_tag: Optional[str], world_size: int, output_jsonl_path: str) -> Tuple[int, int, int, int]:
+def merge_part_files(
+    args, run_tag: Optional[str], world_size: int, output_jsonl_path: str
+) -> Tuple[int, int, int, int]:
+    """Merge part files."""
     merged_rows: List[Tuple[str, str]] = []
     seen_ids: Set[str] = set()
 
     def _append_rows_from_jsonl(path: str):
+        """Internal helper to append rows from jsonl."""
         if not os.path.exists(path):
             return
         with open(path, "r", encoding="utf-8") as f_in:
@@ -220,7 +246,9 @@ def merge_part_files(args, run_tag: Optional[str], world_size: int, output_jsonl
 
     with open(output_jsonl_path, "w", encoding="utf-8") as f_out:
         for row_id, text in merged_rows:
-            f_out.write(json.dumps({"id": row_id, "text": text}, ensure_ascii=False) + "\n")
+            f_out.write(
+                json.dumps({"id": row_id, "text": text}, ensure_ascii=False) + "\n"
+            )
 
     for part_jsonl_path in part_jsonl_paths:
         os.remove(part_jsonl_path)
@@ -231,7 +259,9 @@ def merge_part_files(args, run_tag: Optional[str], world_size: int, output_jsonl
 
     if run_tag is not None:
         for rank in range(world_size):
-            part_stats_path = os.path.join(args.tmp_dir, f"{args.method}.stats.{run_tag}.{rank}.json")
+            part_stats_path = os.path.join(
+                args.tmp_dir, f"{args.method}.stats.{run_tag}.{rank}.json"
+            )
             if os.path.exists(part_stats_path):
                 with open(part_stats_path, "r", encoding="utf-8") as f_stats:
                     stats = json.load(f_stats)
@@ -244,14 +274,31 @@ def merge_part_files(args, run_tag: Optional[str], world_size: int, output_jsonl
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Batch steganography + extraction with multi-GPU parallelism")
-    parser.add_argument("--method", type=str, default=DEFAULT_METHOD, choices=SUPPORTED_METHODS)
-    parser.add_argument("--model_name", type=str, default=DEFAULT_MODEL_NAME, choices=SUPPORTED_MODEL_NAMES)
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Batch steganography + extraction with multi-GPU parallelism"
+    )
+    parser.add_argument(
+        "--method", type=str, default=DEFAULT_METHOD, choices=SUPPORTED_METHODS
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=DEFAULT_MODEL_NAME,
+        choices=SUPPORTED_MODEL_NAMES,
+    )
     parser.add_argument("--model_path", type=str, default="")
     parser.add_argument("--input_csv", type=str, default=DEFAULT_INPUT_CSV)
     parser.add_argument("--max_contexts", type=int, default=DEFAULT_MAX_CONTEXTS)
-    parser.add_argument("--message_bits_length", type=int, default=DEFAULT_MESSAGE_BITS_LENGTH)
-    parser.add_argument("--flush_every", type=int, default=1, help="Flush part JSONL every N successful samples.")
+    parser.add_argument(
+        "--message_bits_length", type=int, default=DEFAULT_MESSAGE_BITS_LENGTH
+    )
+    parser.add_argument(
+        "--flush_every",
+        type=int,
+        default=1,
+        help="Flush part JSONL every N successful samples.",
+    )
 
     parser.add_argument("--max_tokens", type=int, default=DEFAULT_MAX_TOKENS)
     parser.add_argument("--model_precision", type=str, default=DEFAULT_MODEL_PRECISION)
@@ -260,15 +307,22 @@ def parse_args():
     parser.add_argument("--top_k", type=int, default=DEFAULT_TOP_K)
 
     parser.add_argument("--ac_precision", type=int, default=DEFAULT_AC_PRECISION)
-    parser.add_argument("--discop_baseline", action="store_true", default=DEFAULT_DISCOP_BASELINE)
+    parser.add_argument(
+        "--discop_baseline", action="store_true", default=DEFAULT_DISCOP_BASELINE
+    )
     parser.add_argument("--imec_block_size", type=int, default=DEFAULT_IMEC_BLOCK_SIZE)
-    parser.add_argument("--meteor_reorder", action="store_true", default=DEFAULT_METEOR_REORDER)
-    parser.add_argument("--sparsamp_block_size", type=int, default=DEFAULT_SPARSAMP_BLOCK_SIZE)
+    parser.add_argument(
+        "--meteor_reorder", action="store_true", default=DEFAULT_METEOR_REORDER
+    )
+    parser.add_argument(
+        "--sparsamp_block_size", type=int, default=DEFAULT_SPARSAMP_BLOCK_SIZE
+    )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     return parser.parse_args()
 
 
 def main():
+    """Run the module entrypoint."""
     args = parse_args()
 
     if not torch.cuda.is_available():
@@ -277,7 +331,9 @@ def main():
     if args.message_bits_length <= 0:
         args.message_bits_length = args.max_tokens * 16
 
-    _, args.output_dir, args.tmp_dir, output_jsonl_path = get_parallel_paths(args.input_csv, args.method)
+    _, args.output_dir, args.tmp_dir, output_jsonl_path = get_parallel_paths(
+        args.input_csv, args.method
+    )
     os.makedirs(args.tmp_dir, exist_ok=True)
 
     contexts = load_contexts(args.input_csv, args.max_contexts)
@@ -292,13 +348,22 @@ def main():
             f"Resume mode: found {len(processed_ids)} processed ids "
             f"(from existing output/temp shards)."
         )
-    print(f"Remaining contexts to process: {len(contexts_to_process)} / {len(contexts)}")
+    print(
+        f"Remaining contexts to process: {len(contexts_to_process)} / {len(contexts)}"
+    )
 
     world_size = torch.cuda.device_count()
     args.run_tag = str(int(time.time()))
     if contexts_to_process:
-        print(f"Launching {world_size} worker(s) for {len(contexts_to_process)} contexts...")
-        mp.spawn(worker, nprocs=world_size, args=(world_size, args, contexts_to_process), join=True)
+        print(
+            f"Launching {world_size} worker(s) for {len(contexts_to_process)} contexts..."
+        )
+        mp.spawn(
+            worker,
+            nprocs=world_size,
+            args=(world_size, args, contexts_to_process),
+            join=True,
+        )
     else:
         print("No new contexts left. Merging existing output and temporary shards...")
 
@@ -316,7 +381,9 @@ def main():
 
     print(f"Stego text saved to: {output_jsonl_path}")
     print(f"Total rows in output JSONL: {total_rows}")
-    print(f"Processed: {processed}, Matched: {matched}, Failed: {failed}, Extract match rate: {match_rate:.4f}")
+    print(
+        f"Processed: {processed}, Matched: {matched}, Failed: {failed}, Extract match rate: {match_rate:.4f}"
+    )
 
 
 if __name__ == "__main__":

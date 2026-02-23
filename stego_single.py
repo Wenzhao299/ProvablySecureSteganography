@@ -1,4 +1,7 @@
+"""Run single-sample steganography and extraction for quick verification."""
+
 import argparse
+
 import json
 import os
 import re
@@ -34,13 +37,33 @@ from utils import (
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Single-sample steganography + extraction")
-    parser.add_argument("--method", type=str, default=DEFAULT_METHOD, choices=SUPPORTED_METHODS)
-    parser.add_argument("--model_name", type=str, default=DEFAULT_MODEL_NAME, choices=SUPPORTED_MODEL_NAMES)
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Single-sample steganography + extraction"
+    )
+    parser.add_argument(
+        "--method", type=str, default=DEFAULT_METHOD, choices=SUPPORTED_METHODS
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default=DEFAULT_MODEL_NAME,
+        choices=SUPPORTED_MODEL_NAMES,
+    )
     parser.add_argument("--model_path", type=str, default="")
 
-    parser.add_argument("--input_text", type=str, default=DEFAULT_SINGLE_INPUT_TEXT, help="Prompt/context sentence")
-    parser.add_argument("--message_bits", type=str, default=DEFAULT_SINGLE_MESSAGE_BITS, help="Bit string to embed, e.g. 010101")
+    parser.add_argument(
+        "--input_text",
+        type=str,
+        default=DEFAULT_SINGLE_INPUT_TEXT,
+        help="Prompt/context sentence",
+    )
+    parser.add_argument(
+        "--message_bits",
+        type=str,
+        default=DEFAULT_SINGLE_MESSAGE_BITS,
+        help="Bit string to embed, e.g. 010101",
+    )
 
     parser.add_argument("--max_tokens", type=int, default=DEFAULT_MAX_TOKENS)
     parser.add_argument("--model_precision", type=str, default=DEFAULT_MODEL_PRECISION)
@@ -49,15 +72,22 @@ def parse_args():
     parser.add_argument("--top_k", type=int, default=DEFAULT_TOP_K)
 
     parser.add_argument("--ac_precision", type=int, default=DEFAULT_AC_PRECISION)
-    parser.add_argument("--discop_baseline", action="store_true", default=DEFAULT_DISCOP_BASELINE)
+    parser.add_argument(
+        "--discop_baseline", action="store_true", default=DEFAULT_DISCOP_BASELINE
+    )
     parser.add_argument("--imec_block_size", type=int, default=DEFAULT_IMEC_BLOCK_SIZE)
-    parser.add_argument("--meteor_reorder", action="store_true", default=DEFAULT_METEOR_REORDER)
-    parser.add_argument("--sparsamp_block_size", type=int, default=DEFAULT_SPARSAMP_BLOCK_SIZE)
+    parser.add_argument(
+        "--meteor_reorder", action="store_true", default=DEFAULT_METEOR_REORDER
+    )
+    parser.add_argument(
+        "--sparsamp_block_size", type=int, default=DEFAULT_SPARSAMP_BLOCK_SIZE
+    )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     return parser.parse_args()
 
 
 def validate_message_bits(message_bits: str):
+    """Validate message bits."""
     if not message_bits:
         raise ValueError("--message_bits cannot be empty.")
     if not re.fullmatch(r"[01]+", message_bits):
@@ -65,6 +95,7 @@ def validate_message_bits(message_bits: str):
 
 
 def load_last_jsonl_record(path: str):
+    """Load last jsonl record."""
     last_record = None
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
@@ -83,6 +114,7 @@ def load_last_jsonl_record(path: str):
 
 
 def main():
+    """Run the module entrypoint."""
     args = parse_args()
     validate_message_bits(args.message_bits)
 
@@ -107,7 +139,9 @@ def main():
         device,
     )
 
-    stego_text = enc.decode(generated_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)
+    stego_text = enc.decode(
+        generated_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False
+    )
 
     output_path = get_single_output_path(args.method)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

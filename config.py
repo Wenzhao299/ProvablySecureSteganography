@@ -1,4 +1,7 @@
+"""Project-wide constants and path helpers for steganography scripts."""
+
 import os
+
 
 # Steganography methods that support both embedding and extraction.
 SUPPORTED_METHODS = ("ac", "meteor", "adg", "discop", "imec", "sparsamp")
@@ -34,6 +37,7 @@ DEFAULT_SINGLE_MESSAGE_BITS = "010101110011"
 
 
 def resolve_model_path(model_name: str, model_path: str = "") -> str:
+    """Resolve model path."""
     resolved = MODEL_PATH_MAP.get(model_name, model_path)
     if not resolved:
         raise ValueError("Please provide --model_path or use a supported --model_name.")
@@ -41,6 +45,7 @@ def resolve_model_path(model_name: str, model_path: str = "") -> str:
 
 
 def infer_dataset_name(input_csv: str) -> str:
+    """Infer dataset name."""
     file_stem = os.path.splitext(os.path.basename(input_csv))[0]
     parts = file_stem.split("_")
     if len(parts) > 1:
@@ -49,6 +54,7 @@ def infer_dataset_name(input_csv: str) -> str:
 
 
 def get_parallel_paths(input_csv: str, method: str):
+    """Get parallel paths."""
     dataset = infer_dataset_name(input_csv)
     output_dir = os.path.join("results_parallel", dataset)
     tmp_dir = os.path.join(output_dir, f".tmp_{method}")
@@ -57,4 +63,5 @@ def get_parallel_paths(input_csv: str, method: str):
 
 
 def get_single_output_path(method: str) -> str:
+    """Get single output path."""
     return os.path.join("results_single", f"{method}.jsonl")

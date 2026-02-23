@@ -1,4 +1,7 @@
+"""METEOR steganography implementation with optional DRBG masking and reordering."""
+
 import torch
+
 import hmac
 import hashlib
 from utils import get_probs_past, bits2int, int2bits, num_same_from_beg
@@ -7,26 +10,32 @@ from scipy.stats import entropy
 
 
 class DRBG(object):
+    """Represent DRBG."""
+
     def __init__(self, key, seed):
+        """Initialize instance attributes."""
         self.key = key
-        self.val = b'\x01' * 64
+        self.val = b"\x01" * 64
         self.reseed(seed)
 
         self.byte_index = 0
         self.bit_index = 0
 
     def hmac(self, key, val):
+        """Compute an HMAC-SHA512 digest."""
         return hmac.new(key, val, hashlib.sha512).digest()
 
-    def reseed(self, data=b''):
-        self.key = self.hmac(self.key, self.val + b'\x00' + data)
+    def reseed(self, data=b""):
+        """Reseed the DRBG internal state."""
+        self.key = self.hmac(self.key, self.val + b"\x00" + data)
         self.val = self.hmac(self.key, self.val)
 
         if data:
-            self.key = self.hmac(self.key, self.val + b'\x01' + data)
+            self.key = self.hmac(self.key, self.val + b"\x01" + data)
             self.val = self.hmac(self.key, self.val)
 
     def generate_bits(self, n):
+        """Generate pseudo-random mask bits."""
         xs = np.zeros(n, dtype=bool)
         for i in range(0, n):
             xs[i] = (self.val[self.byte_index] >> (7 - self.bit_index)) & 1
@@ -47,8 +56,9 @@ class DRBG(object):
 def bin_sort(l, token_indices, total, entropy, device):
     # compute entropy for upper bound on the number of bins we need
 
+    """Reorder tokens into entropy-aware bins for METEOR."""
     bucket_size = total
-    num_bins = 2**int(entropy + 1)
+    num_bins = 2 ** int(entropy + 1)
     bucket_size = total / num_bins
 
     bins = [torch.empty(0, dtype=torch.long, device=device)] * num_bins
@@ -66,7 +76,7 @@ def bin_sort(l, token_indices, total, entropy, device):
     search_order.append(0)
     priorities[int(num_bins / 2)] = 0
     priorities[0] = 0
-    while (step_size >= 1):
+    while step_size >= 1:
         priority += 1
         for x in range(num_bins - int(step_size), -1, -int(step_size * 2)):
             search_order.append(x)
@@ -74,7 +84,7 @@ def bin_sort(l, token_indices, total, entropy, device):
         step_size = step_size / 2
 
     # Adding the actual elements
-    for (item, token_index) in zip(l.tolist(), token_indices.tolist()):
+    for item, token_index in zip(l.tolist(), token_indices.tolist()):
         found_single_bucket_fit = False
         single_bucket_index = -1
         single_bucket_value = bucket_size
@@ -88,9 +98,9 @@ def bin_sort(l, token_indices, total, entropy, device):
         multi_bucket_bumping_value = total
 
         for i in search_order:  # for index in search_order
-            if (item > space_left_after[i]):
+            if item > space_left_after[i]:
                 continue
-            if (value_in_bins[i] >= bucket_size):
+            if value_in_bins[i] >= bucket_size:
                 continue
 
             # Priority of choices
@@ -99,50 +109,71 @@ def bin_sort(l, token_indices, total, entropy, device):
             #    2a. Minimize the wasted space.  Aka use the smallest space (of equal priority) that accomplishes this goal
             #  3. If not (1) and (2), then put it in the space the bumps stuff the least.
 
-            if (value_in_bins[i] + item > bucket_size):  #Would overflow.
+            if value_in_bins[i] + item > bucket_size:  # Would overflow.
 
                 space_before_next_block = bucket_size - value_in_bins[i]
                 for j in range(i + 1, len(bins)):
-                    if (value_in_bins[j] >
-                            0):  # We have found a bucket with something in it.  This is how much space we have here.
-                        space_before_next_block = space_before_next_block + (bucket_size - value_in_bins[i])
+                    if (
+                        value_in_bins[j] > 0
+                    ):  # We have found a bucket with something in it.  This is how much space we have here.
+                        space_before_next_block = space_before_next_block + (
+                            bucket_size - value_in_bins[i]
+                        )
                         break
                     else:  # This was a empty bucket
                         space_before_next_block = space_before_next_block + bucket_size
 
-                if ((not found_multi_bucket_bumpless_fit)
-                        or (found_multi_bucket_bumpless_fit
-                            and priorities[i] <= priorities[multi_bucket_bumpless_index])):  #This could potentially be a match
+                if (not found_multi_bucket_bumpless_fit) or (
+                    found_multi_bucket_bumpless_fit
+                    and priorities[i] <= priorities[multi_bucket_bumpless_index]
+                ):  # This could potentially be a match
 
                     # If this is a valid space to put this without bumping and it is a better fit than previous spaces
-                    if (space_before_next_block > item and space_before_next_block < multi_bucket_bumpless_value):
+                    if (
+                        space_before_next_block > item
+                        and space_before_next_block < multi_bucket_bumpless_value
+                    ):
                         # set this to be the pointer!  we can fit stuff here
                         found_multi_bucket_bumpless_fit = True
                         multi_bucket_bumpless_index = i
                         multi_bucket_bumpless_value = space_before_next_block
 
                     # Find the overflow that will bump the least
-                    if (item - space_before_next_block < multi_bucket_bumping_value):
+                    if item - space_before_next_block < multi_bucket_bumping_value:
                         found_multi_bucket_bumping_fit = True
                         multi_bucket_bumping_index = i
                         multi_bucket_bumping_value = item - space_before_next_block
 
-            if (value_in_bins[i] + item <= bucket_size):  #Would fit
-                if (single_bucket_value > value_in_bins[i]):
+            if value_in_bins[i] + item <= bucket_size:  # Would fit
+                if single_bucket_value > value_in_bins[i]:
                     found_single_bucket_fit = True
                     single_bucket_value = value_in_bins[i]
                     single_bucket_index = i
 
-        if (single_bucket_index == multi_bucket_bumpless_index == multi_bucket_bumping_index == -1):
+        if (
+            single_bucket_index
+            == multi_bucket_bumpless_index
+            == multi_bucket_bumping_index
+            == -1
+        ):
             bins[0] = torch.cat((torch.tensor([item], device=device), bins[0]), 0)
-            token_bins[0] = torch.cat((torch.tensor([token_index], device=device), token_bins[0]), 0)
+            token_bins[0] = torch.cat(
+                (torch.tensor([token_index], device=device), token_bins[0]), 0
+            )
             continue
 
         if found_single_bucket_fit:
             # We found somewhere we can actually fit!
-            bins[single_bucket_index] = torch.cat((bins[single_bucket_index], torch.tensor([item], device=device)), 0)
+            bins[single_bucket_index] = torch.cat(
+                (bins[single_bucket_index], torch.tensor([item], device=device)), 0
+            )
             token_bins[single_bucket_index] = torch.cat(
-                (token_bins[single_bucket_index], torch.tensor([token_index], device=device)), 0)
+                (
+                    token_bins[single_bucket_index],
+                    torch.tensor([token_index], device=device),
+                ),
+                0,
+            )
             value_in_bins[single_bucket_index] += item
             for i in range(0, single_bucket_index + 1):
                 space_left_after[i] -= item
@@ -152,9 +183,19 @@ def bin_sort(l, token_indices, total, entropy, device):
             part_in_bucket = bucket_size - value_in_bins[multi_bucket_bumpless_index]
             part_overflow = item - part_in_bucket
             bins[multi_bucket_bumpless_index] = torch.cat(
-                (bins[multi_bucket_bumpless_index], torch.tensor([item], device=device)), 0)
+                (
+                    bins[multi_bucket_bumpless_index],
+                    torch.tensor([item], device=device),
+                ),
+                0,
+            )
             token_bins[multi_bucket_bumpless_index] = torch.cat(
-                (token_bins[multi_bucket_bumpless_index], torch.tensor([token_index], device=device)), 0)
+                (
+                    token_bins[multi_bucket_bumpless_index],
+                    torch.tensor([token_index], device=device),
+                ),
+                0,
+            )
             value_in_bins[multi_bucket_bumpless_index] = bucket_size
 
             # Fill this bucket and continue overflowing
@@ -162,9 +203,11 @@ def bin_sort(l, token_indices, total, entropy, device):
             for i in range(0, j):
                 space_left_after[i] -= item
 
-            while (part_overflow > 0):
+            while part_overflow > 0:
                 new_part_overflow = (value_in_bins[j] + part_overflow) - bucket_size
-                value_in_bins[j] = min(bucket_size, part_overflow + value_in_bins[j])  # mark the bucket as filled
+                value_in_bins[j] = min(
+                    bucket_size, part_overflow + value_in_bins[j]
+                )  # mark the bucket as filled
                 space_left_after[j] -= part_overflow
                 part_overflow = new_part_overflow
                 j += 1
@@ -172,19 +215,28 @@ def bin_sort(l, token_indices, total, entropy, device):
         else:
             part_in_bucket = bucket_size - value_in_bins[multi_bucket_bumping_index]
             part_overflow = item - part_in_bucket
-            bins[multi_bucket_bumping_index] = torch.cat((bins[multi_bucket_bumping_index], torch.tensor([item], device=device)),
-                                                         0)
+            bins[multi_bucket_bumping_index] = torch.cat(
+                (bins[multi_bucket_bumping_index], torch.tensor([item], device=device)),
+                0,
+            )
             token_bins[multi_bucket_bumping_index] = torch.cat(
-                (token_bins[multi_bucket_bumping_index], torch.tensor([token_index], device=device)), 0)
+                (
+                    token_bins[multi_bucket_bumping_index],
+                    torch.tensor([token_index], device=device),
+                ),
+                0,
+            )
             value_in_bins[multi_bucket_bumping_index] = bucket_size
 
             # Fill this bucket and continue overflowing
             j = multi_bucket_bumping_index + 1
             for i in range(0, j):
                 space_left_after[i] -= item
-            while (part_overflow > 0):
+            while part_overflow > 0:
                 new_part_overflow = (value_in_bins[j] + part_overflow) - bucket_size
-                value_in_bins[j] = min(bucket_size, part_overflow + value_in_bins[j])  # mark the bucket as filled
+                value_in_bins[j] = min(
+                    bucket_size, part_overflow + value_in_bins[j]
+                )  # mark the bucket as filled
                 space_left_after[j] -= part_overflow
                 part_overflow = new_part_overflow
                 j += 1
@@ -195,21 +247,38 @@ def bin_sort(l, token_indices, total, entropy, device):
     return sorted_tensor, sorted_tokens
 
 
-
 # Constants for HMAC-DRBG -- MUST CHANGE FOR SECURE IMPLEMENTATION
-sample_key = b'0x01' * 64
-sample_seed_prefix = b'sample'
-sample_nonce_counter = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+sample_key = b"0x01" * 64
+sample_seed_prefix = b"sample"
+sample_nonce_counter = (
+    b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+)
 import os
 import time
 
+
 @torch.no_grad()
-def encode_meteor(model, context, message_bits, token_num_need_generated, device='cuda', top_p=1.0, top_k=0, precision=32, randomize_key:bool=False, input_key: bytes=sample_key, input_nonce: bytes = sample_nonce_counter, reorder=False, temp=1.0):
+def encode_meteor(
+    model,
+    context,
+    message_bits,
+    token_num_need_generated,
+    device="cuda",
+    top_p=1.0,
+    top_k=0,
+    precision=32,
+    randomize_key: bool = False,
+    input_key: bytes = sample_key,
+    input_nonce: bytes = sample_nonce_counter,
+    reorder=False,
+    temp=1.0,
+):
+    """Encode data with meteor."""
     context = torch.tensor(context[-1022:], device=device, dtype=torch.long)
     if randomize_key:
         input_key = os.urandom(64)
 
-    mask_generator = DRBG(input_key, sample_seed_prefix+input_nonce)
+    mask_generator = DRBG(input_key, sample_seed_prefix + input_nonce)
 
     prev = context
     past = None
@@ -220,24 +289,25 @@ def encode_meteor(model, context, message_bits, token_num_need_generated, device
     stat_time = 0
     model_time = 0
 
-    max_val = 2 ** precision
+    max_val = 2**precision
     threshold = 2 ** (-precision)
     cur_interval = [0, max_val]
-    i = 0 # index of message_bits
+    i = 0  # index of message_bits
     message_len = len(message_bits)
 
     while i < message_len:
         if token_num_generated >= token_num_need_generated:
-            # print(f"Warning: Token limit ({token_num_need_generated}) reached, but message not fully encoded. Encoded {i} of {message_len} bits.")
             break
         model_time_1 = time.time()
-        probs, indices, past = get_probs_past(model=model,
-                                              prev=prev,
-                                              past=past,
-                                              device=device,
-                                              top_p=top_p,
-                                              top_k=top_k,
-                                              temp=temp)
+        probs, indices, past = get_probs_past(
+            model=model,
+            prev=prev,
+            past=past,
+            device=device,
+            top_p=top_p,
+            top_k=top_k,
+            temp=temp,
+        )
         model_time_2 = time.time()
         model_time += model_time_2 - model_time_1
 
@@ -249,7 +319,7 @@ def encode_meteor(model, context, message_bits, token_num_need_generated, device
 
         # cutoff low probabilities that would be rounded to 0
         cur_int_range = cur_interval[1] - cur_interval[0]
-        cur_threshold = 1/cur_int_range
+        cur_threshold = 1 / cur_int_range
         original_indices = indices.clone()
 
         if (probs < cur_threshold).nonzero().numel() > 0:
@@ -266,15 +336,16 @@ def encode_meteor(model, context, message_bits, token_num_need_generated, device
 
         if reorder:
             entropy_in_this_distribution = entropy(probs.tolist(), base=2)
-            probs_int, indices = bin_sort(probs_int, indices, cur_int_range, entropy_in_this_distribution,
-                                          device)
+            probs_int, indices = bin_sort(
+                probs_int, indices, cur_int_range, entropy_in_this_distribution, device
+            )
 
         cum_probs = probs_int.cumsum(0)
 
         # Remove any elements from the bottom if rounding caused the total prob to be too large
         overfill_index = (cum_probs > cur_int_range).nonzero()
         if len(overfill_index) > 0:
-            cum_probs = cum_probs[:overfill_index[0]]
+            cum_probs = cum_probs[: overfill_index[0]]
 
         # Add any mass to the top if removing/rounding causes the total prob to be too small
         cum_probs += cur_int_range - cum_probs[-1]
@@ -282,20 +353,18 @@ def encode_meteor(model, context, message_bits, token_num_need_generated, device
         probs_final = cum_probs.clone()
         probs_final[1:] -= cum_probs[1:] - cum_probs[:-1]
 
-
         # Convert to position in range
         cum_probs += cur_interval[0]
 
         # Apply the mask to the message
-        message = message_bits[i: i+precision]
+        message = message_bits[i : i + precision]
         if i + precision > message_len:
-            message += '0' * (i + precision - message_len)
+            message += "0" * (i + precision - message_len)
         message_list = [int(bit) for bit in message]
 
         mask_bits = mask_generator.generate_bits(precision)
 
         for b in range(0, len(message)):
-            # print(f"message[b]:{message[b]},mask_bits[b]:{mask_bits[b]}")
             message_list[b] = message_list[b] ^ mask_bits[b]
 
         # Get selected index based on binary fraction from message bits
@@ -309,30 +378,47 @@ def encode_meteor(model, context, message_bits, token_num_need_generated, device
 
         # Convert range to bits
         new_int_bottom_bits_inc = list(reversed(int2bits(new_int_bottom, precision)))
-        new_int_top_bits_inc = list(reversed(int2bits(new_int_top-1, precision)))  # -1 here because upper bound is exclusive
+        new_int_top_bits_inc = list(
+            reversed(int2bits(new_int_top - 1, precision))
+        )  # -1 here because upper bound is exclusive
 
         # Consume most significant bits which are now fixed and update interval
-        num_bits_encoded = num_same_from_beg(new_int_bottom_bits_inc,new_int_top_bits_inc)
+        num_bits_encoded = num_same_from_beg(
+            new_int_bottom_bits_inc, new_int_top_bits_inc
+        )
 
-        # print(f"嵌入的加密比特：{''.join([str(m) for m in message_list[:num_bits_encoded]])}")
-        # print(f"嵌入：{''.join([str(m) for m in message_bits[i:i + num_bits_encoded]])}")
-        encoded_message.append(message_bits[i:i+num_bits_encoded])
+        encoded_message.append(message_bits[i : i + num_bits_encoded])
         i += num_bits_encoded
 
         generated_ids.append(sampled_index)
         token_num_generated += 1
-        prev = torch.tensor([sampled_index], device=device, dtype=torch.long).unsqueeze(0)
+        prev = torch.tensor([sampled_index], device=device, dtype=torch.long).unsqueeze(
+            0
+        )
 
     return generated_ids, encoded_message, total_entropy, stat_time, model_time
 
 
 @torch.no_grad()
-def decode_meteor(model, generated_ids, context, device='cuda', top_p=1.0, top_k=0, precision=32, randomize_key:bool=False, input_key: bytes=sample_key, input_nonce: bytes = sample_nonce_counter, reorder=False, temp=1.0):
+def decode_meteor(
+    model,
+    generated_ids,
+    context,
+    device="cuda",
+    top_p=1.0,
+    top_k=0,
+    precision=32,
+    randomize_key: bool = False,
+    input_key: bytes = sample_key,
+    input_nonce: bytes = sample_nonce_counter,
+    reorder=False,
+    temp=1.0,
+):
+    """Decode data with meteor."""
     context = torch.tensor(context[-1022:], device=device, dtype=torch.long)
     mask_generator = DRBG(input_key, sample_seed_prefix + input_nonce)
 
-
-    max_val = 2 ** precision
+    max_val = 2**precision
     threshold = 2 ** (-precision)
     cur_interval = [0, max_val]
 
@@ -342,20 +428,24 @@ def decode_meteor(model, generated_ids, context, device='cuda', top_p=1.0, top_k
 
     i = 0
     for tokenID in generated_ids:
-        probs_temp, indices, past = get_probs_past(model=model,
-                                                   prev=prev,
-                                                   past=past,
-                                                   device=device,
-                                                   top_p=top_p,
-                                                   top_k=top_k,
-                                                   temp=temp)
+        probs_temp, indices, past = get_probs_past(
+            model=model,
+            prev=prev,
+            past=past,
+            device=device,
+            top_p=top_p,
+            top_k=top_k,
+            temp=temp,
+        )
 
         # Cutoff low probabilities that would be rounded to 0
         cur_int_range = cur_interval[1] - cur_interval[0]
         cur_threshold = 1 / cur_int_range
         k = len(probs_temp)
         if (probs_temp < cur_threshold).nonzero().numel() > 0:
-            k = max(2, (probs_temp < cur_threshold).nonzero()[0].item())  # not less than 2
+            k = max(
+                2, (probs_temp < cur_threshold).nonzero()[0].item()
+            )  # not less than 2
             probs_temp_int = probs_temp[:k]  # Cutoff all but top k
             old_indices = indices
             indices = indices[:k]
@@ -368,18 +458,23 @@ def decode_meteor(model, generated_ids, context, device='cuda', top_p=1.0, top_k
 
         if reorder:
             entropy_in_this_distribution = entropy(probs_temp.tolist(), base=2)
-            probs_temp_int, indices = bin_sort(probs_temp_int, indices, cur_int_range, entropy_in_this_distribution,
-                                          device)
+            probs_temp_int, indices = bin_sort(
+                probs_temp_int,
+                indices,
+                cur_int_range,
+                entropy_in_this_distribution,
+                device,
+            )
 
         cum_probs = probs_temp_int.cumsum(0)
 
         # Remove any elements from the bottom if rounding caused the total prob to be too large
         overfill_index = (cum_probs > cur_int_range).nonzero()
         if overfill_index.numel() > 0:
-            cum_probs = cum_probs[:overfill_index[0]]
+            cum_probs = cum_probs[: overfill_index[0]]
 
         # Add any mass to the top if removing/rounding causes the total prob to be too small
-        cum_probs += cur_int_range - cum_probs[-1] # add
+        cum_probs += cur_int_range - cum_probs[-1]  # add
         # Get out resulting probabilities
         probs_final = cum_probs.clone()
         probs_final[1:] -= cum_probs[1:] - cum_probs[:-1]
@@ -392,10 +487,12 @@ def decode_meteor(model, generated_ids, context, device='cuda', top_p=1.0, top_k
         new_int_bottom = cum_probs[selection - 1] if selection > 0 else cur_interval[0]
         new_int_top = cum_probs[selection]
 
-        new_int_bottom_bits_inc = list(reversed(int2bits(new_int_bottom,precision)))
+        new_int_bottom_bits_inc = list(reversed(int2bits(new_int_bottom, precision)))
         new_int_top_bits_inc = list(reversed(int2bits(new_int_top - 1, precision)))
 
-        num_bits_encoded = num_same_from_beg(new_int_bottom_bits_inc,new_int_top_bits_inc)
+        num_bits_encoded = num_same_from_beg(
+            new_int_bottom_bits_inc, new_int_top_bits_inc
+        )
 
         if i == len(generated_ids) - 1:
             new_bits = new_int_bottom_bits_inc
@@ -407,24 +504,9 @@ def decode_meteor(model, generated_ids, context, device='cuda', top_p=1.0, top_k
         for b in range(0, len(new_bits)):
             new_bits[b] = new_bits[b] ^ mask_bits[b]
 
-        new_bits_str = ''.join([str(m) for m in new_bits[:]])
-        # print(f"new_bits_str:{new_bits_str}")
+        new_bits_str = "".join([str(m) for m in new_bits[:]])
         extracted_message.append(new_bits_str)
 
         prev = torch.tensor([tokenID], device=device, dtype=torch.long).unsqueeze(0)
 
-
     return extracted_message
-
-
-
-
-
-
-
-
-
-
-
-
-
