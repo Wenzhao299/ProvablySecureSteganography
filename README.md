@@ -54,11 +54,6 @@
 
 如需改本地模型目录，修改 `config.py` 中 `MODEL_PATH_MAP`。
 
-## 关于 sample 函数
-
-- 当前项目中 `sample` 函数没有被主流程脚本直接调用。
-- `sample` 已整合到 `utils.py`，入口为 `utils.sample(...)`。
-
 ## 输入数据格式
 
 并行脚本默认读取 CSV，要求至少两列：
