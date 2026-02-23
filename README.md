@@ -35,14 +35,6 @@
 
 ## 环境准备
 
-推荐使用你已有环境：`env_ac`
-
-```bash
-conda run -n env_ac python -V
-```
-
-### 依赖（如需手动安装）
-
 核心依赖来自脚本导入：
 
 - `torch`
@@ -163,7 +155,7 @@ conda run -n env_ac python evaluate_capacity_speed.py \
 
 ## 推荐许可证
 
-本项目推荐使用 **MIT License**：
+使用 **MIT License**：
 
 - 允许商用、修改、分发、私有使用
 - 条款简洁，便于学术与工程复用
