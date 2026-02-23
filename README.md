@@ -1,5 +1,7 @@
 # ProvablySecureSteganography
 
+**语言 / Language**: [中文](README.md) | [English](README_en.md)
+
 面向大语言模型文本隐写的实验代码仓库，支持多种隐写方法的嵌入与提取，并提供并行批处理、单条测试、PPL 与容量/速度评估脚本。
 
 ## 主要功能
