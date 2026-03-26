@@ -37,7 +37,13 @@ This repository contains experimental code for text steganography with large lan
 
 ## Environment
 
-Core dependencies imported by scripts:
+Core dependencies are listed in `requirements.txt` and can be installed with:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Main dependencies include:
 
 - `torch`
 - `transformers`
@@ -70,7 +76,7 @@ See `context_movie.csv` for an example.
 ### 1) Multi-GPU Batch Steganography and Extraction
 
 ```bash
-conda run -n env_ac python stego_parallel.py \
+python stego_parallel.py \
   --method meteor \
   --model_name qwen2.5 \
   --input_csv context_movie.csv \
@@ -93,7 +99,7 @@ Outputs:
 ### 2) Single-Sample Steganography and Extraction
 
 ```bash
-conda run -n env_ac python stego_single.py \
+python stego_single.py \
   --method meteor \
   --model_name qwen2.5 \
   --input_text "Tell a short story about a rabbit." \
@@ -110,7 +116,7 @@ Outputs:
 ### 3) PPL Evaluation
 
 ```bash
-conda run -n env_ac python evaluate_ppl.py \
+python evaluate_ppl.py \
   --model qwen2.5 \
   --dataset movie \
   --method meteor
@@ -128,7 +134,7 @@ Output directory: `results_parallel/{dataset}/ppl/`
 ### 4) Capacity and Speed Evaluation
 
 ```bash
-conda run -n env_ac python evaluate_capacity_speed.py \
+python evaluate_capacity_speed.py \
   --model_name qwen2.5 \
   --input_csv context_movie.csv \
   --dataset movie \

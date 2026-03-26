@@ -37,7 +37,13 @@
 
 ## 环境准备
 
-核心依赖来自脚本导入：
+核心依赖见 `requirements.txt`，可直接安装：
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+主要依赖包括：
 
 - `torch`
 - `transformers`
@@ -70,7 +76,7 @@
 ### 1) 多卡并行批量隐写与提取
 
 ```bash
-conda run -n env_ac python stego_parallel.py \
+python stego_parallel.py \
   --method meteor \
   --model_name qwen2.5 \
   --input_csv context_movie.csv \
@@ -93,7 +99,7 @@ conda run -n env_ac python stego_parallel.py \
 ### 2) 单条隐写与提取
 
 ```bash
-conda run -n env_ac python stego_single.py \
+python stego_single.py \
   --method meteor \
   --model_name qwen2.5 \
   --input_text "Tell a short story about a rabbit." \
@@ -110,7 +116,7 @@ conda run -n env_ac python stego_single.py \
 ### 3) PPL 评估
 
 ```bash
-conda run -n env_ac python evaluate_ppl.py \
+python evaluate_ppl.py \
   --model qwen2.5 \
   --dataset movie \
   --method meteor
@@ -128,7 +134,7 @@ conda run -n env_ac python evaluate_ppl.py \
 ### 4) 容量与速度评估
 
 ```bash
-conda run -n env_ac python evaluate_capacity_speed.py \
+python evaluate_capacity_speed.py \
   --model_name qwen2.5 \
   --input_csv context_movie.csv \
   --dataset movie \
