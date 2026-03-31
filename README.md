@@ -14,12 +14,14 @@
 
 ## 集成方法与论文
 
-- `ac`：[Neural Linguistic Steganography](https://aclanthology.org/D19-1115/)（2019，ACL）
-- `meteor`：[METEOR: Neural Linguistic Steganography with Self-Adjusting Arithmetic Coding](https://dl.acm.org/doi/10.1145/3460120.3484550)（2021，ACM CCS）
-- `adg`：[Provably Secure Generative Linguistic Steganography](https://aclanthology.org/2021.findings-acl.268/)（2021，ACL Findings）
-- `discop`：[Discop: Provably Secure Steganography in Practice based on "Distribution Copies"](https://ieeexplore.ieee.org/document/10179287)（2023，IEEE S&P）
-- `imec`：[Near-Optimal Practical and Secure Text Steganography](https://iclr.cc/virtual/2023/poster/11490)（2023，ICLR）
-- `sparsamp`：[Provably Secure Text Steganography via Sparsification and Sampling](https://www.usenix.org/conference/usenixsecurity25/presentation/wang-yaofei)（2025，USENIX Security）
+| 方法 | 论文 | 年份 | 会议 |
+| --- | --- | --- | --- |
+| `ac` | [Neural Linguistic Steganography](https://aclanthology.org/D19-1115/) | 2019 | ACL |
+| `meteor` | [METEOR: Neural Linguistic Steganography with Self-Adjusting Arithmetic Coding](https://dl.acm.org/doi/10.1145/3460120.3484550) | 2021 | ACM CCS |
+| `adg` | [Provably Secure Generative Linguistic Steganography](https://aclanthology.org/2021.findings-acl.268/) | 2021 | ACL Findings |
+| `discop` | [Discop: Provably Secure Steganography in Practice based on "Distribution Copies"](https://ieeexplore.ieee.org/document/10179287) | 2023 | IEEE S&P |
+| `imec` | [Near-Optimal Practical and Secure Text Steganography](https://iclr.cc/virtual/2023/poster/11490) | 2023 | ICLR |
+| `sparsamp` | [Provably Secure Text Steganography via Sparsification and Sampling](https://www.usenix.org/conference/usenixsecurity25/presentation/wang-yaofei) | 2025 | USENIX Security |
 
 ## 项目结构
 
